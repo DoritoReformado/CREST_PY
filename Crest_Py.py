@@ -12,107 +12,58 @@ from shapely.geometry import box #Modulo que permite extraer la informacion geog
 import rasterio                 #Modulo que permite la lectura de archivo TIF y descomponer su contenido
 from rasterio.mask import mask  #Modulo que permite extraer los datos vacios en un TIF
 from rasterio.transform import Affine   #Modulo que nos permite cambiar las dimensiones de una variable de rasterio
-import geemap as gee            #Modulo a emplear a futuro para la impresion de mapas
-import locale                   
+#import geemap as gee            #Modulo a emplear a futuro para la impresion de mapas
+import locale 
+import sys
+import os
+current_path = os.path.abspath(os.path.dirname(__file__))
+sys.path.append(current_path)
+import clipear as clp
+import escritura as write
+import Reescalar as scl
+import Extensionlocal as ExtLocal
+import crear    
 ee.Initialize()
-locale.setlocale(locale.LC_ALL, 'es_ES')
+
+
+def Iniciar(Root):
+    crear.crearDirectoriosCrest(Root)
 
 # In[5]:
 ##########################################################################################################################################################
 ##########################################################################################################################################################
-def Basics_singleImage(nombre_Cuenca, nombre_Archivo, shp_path, satelite, banda, cellsize, Root, sistemaCoordenadas):
+def Basics_singleImage(nombre_Archivo, shp_path, satelite, banda, Root, sistemaCoordenadas, cellsize, recortar, escalar):
     AreaShp = gpd.read_file(str(shp_path))
     areaProyecto = ee.FeatureCollection(AreaShp.__geo_interface__).geometry()
     imagen = ee.Image(str(satelite)).clip(areaProyecto)
-    epsg_code = sistemaCoordenadas
     url = imagen.getDownloadUrl({
         'bands': [str(banda)], #dato del satelite a tratar
         'region': areaProyecto, #area limite del archivo
-        'crs': 'EPSG:' + str(epsg_code), #georeferenciacion del archivo
-        'crs_transform': [cellsize, 0, 0, 0, -cellsize, 0], #Delimitacion del tamaño de celda
+        'crs': 'EPSG:' + str(sistemaCoordenadas), #georeferenciacion del archivo
         'format': 'GEO_TIFF', #Formato de exportado
+        'scale': 30,
     })
-    #print(url)
     response = requests.get(url)
-    with open(str(Root)+'Temporales/Basics/'+str(nombre_Archivo)+'.tif', 'wb') as fd:
+    with open(str(Root)+'Temporales/Basics/Normal/'+str(nombre_Archivo)+'.tif', 'wb') as fd:
         fd.write(response.content)
-    ###############################################################
-    def clip_shp (): #EN CONSTRUCCION
-        tamanio_celda = cellsize
-        # Leer el archivo TIFF
-        with rasterio.open(str(Root)+'Temporales/Basics/'+str(nombre_Archivo)+'.tif') as src:
-            # Leer el archivo shapefile
-            shapefile = gpd.read_file(shp_path)
 
-            # Obtener la geometría del shapefile (por ejemplo, la primera geometría)
-            geometry = shapefile.to_crs(src.crs).geometry[0]
-
-            # Realizar el recorte
-            out_image, out_transform = mask(src, [geometry], crop=True)
-
-            # Calcular la transformación afín con el nuevo tamaño de celda
-            resx = tamanio_celda
-            resy = -tamanio_celda
-            new_transform = Affine(resx, out_transform.b, out_transform.c,
-                                out_transform.d, resy, out_transform.f)
-
-            # Ruta de salida para el nuevo archivo TIFF recortado con el nuevo tamaño de celda
-            output_path = str(Root)+'Temporales/Basics/'+str(nombre_Archivo)+'.tif'
-
-            # Actualizar los metadatos
-            out_meta = src.meta.copy()
-            out_meta.update({
-                "driver": "GTiff",
-                "height": out_image.shape[1],
-                "width": out_image.shape[2],
-                "transform": new_transform
-        })
-            # Guardar el nuevo archivo TIFF recortado con el nuevo tamaño de celda
-        with rasterio.open(output_path, "w", **out_meta) as dest:
-            dest.write(out_image)
-    ################################################################
+    tif_path = str(Root)+'Temporales/Basics/Normal/'+str(nombre_Archivo)+'.tif'
     
-    # Abrir el archivo GeoTIFF con rasterio
-    with rasterio.open(str(Root)+'Temporales/Basics/'+str(nombre_Archivo)+'.tif') as src:
-        
-        # Leer los datos de la banda 1 como un array NumPy
-        data = src.read(1).astype('int32')
-        if(src._nodatavals[0] == None):
-            mascara = data == int(0)
-            data[mascara] = -9999
-        else:
-            mascara = data == int(src._nodatavals[0])
-            data[mascara] = -9999
+    if recortar == True:
+        output_path = str(Root)+'Temporales/Basics/Recortado/'+str(nombre_Archivo)+'.tif'
+        tif_path = clp.clip_shp(tif_path, shp_path, output_path)
 
-        # Obtener los metadatos de la imagen
-        profile = src.profile
-        profile["nodata"] = -9999
-        
 
-    with open(str(Root)+'Basics/'+str(nombre_Archivo)+'.asc', "w") as dst:
-        # Escribir los metadatos en el archivo ASCII
-        dst.write("ncols {}\n".format(profile["width"]))
-        dst.write("nrows {}\n".format(profile["height"]))
-        dst.write("xllcorner {}\n".format(profile["transform"][2]))
-        dst.write("yllcorner {}\n".format(profile["transform"][5]+ (profile["height"] * profile["transform"][4])))
-        dst.write("cellsize {}\n".format(profile["transform"][0]))
-        dst.write("NODATA_value {}\n".format(profile["nodata"]))
+    if escalar == True:
+        output_path = str(Root)+'Temporales/Basics/Escalado/'+str(nombre_Archivo)+'.tif'
+        tif_path = scl.reescalar(tif_path, output_path, cellsize)
 
-        # Escribir los datos en el archivo ASCII
-        for row in data:
-            dst.write(" ".join(str(x) if x != row[0] else str(x).lstrip() for x in row) + "\n")
+    
 
-    with rasterio.open(str(Root)+'Basics/'+str(nombre_Archivo)+'.asc', 'r+') as src:
-        # Crea un objeto CRS basado en el código EPSG
-        #print(src.crs)
-        srs = rasterio.crs.CRS.from_epsg(epsg_code)
-
-        # Establece el SRS en el objeto DatasetReader
-        src.crs = srs
-
-        #return src    
-        src.close()
+    write.escritura(tif_path,nombre_Archivo, Root,sistemaCoordenadas)
     print("Proceso terminado")
+
+
 # In[6]:
 
 
@@ -120,98 +71,23 @@ def Basics_singleImage(nombre_Cuenca, nombre_Archivo, shp_path, satelite, banda,
 ##########################################################################################################################################################
 
 
-def Basics_singleImage_Local(nombre_Cuenca, nombre_Archivo, cellsize, tif_path, shp_path, Root, sistemaCoordenadas):
-    AreaShp = gpd.read_file(str(shp_path))
-    areaProyecto = ee.FeatureCollection(AreaShp.__geo_interface__).geometry()
-    epsg_code = sistemaCoordenadas
-    # Tamaño de celda deseado en unidades de la imagen
-    tamanio_celda = cellsize  #incompatibilidad con el tamaño de celda
+def Basics_singleImage_Local(nombre_Archivo, tif_path, shp_path, Root, sistemaCoordenadas, cellsize, recortar, escalar):
+    output_path = str(Root)+'Temporales/Basics/Normal/'+str(nombre_Archivo)+'.tif'
+    ExtLocal.extension(tif_path, shp_path, output_path)
 
-    # Leer el archivo TIFF
-    def clip(): #En Construccion
-        with rasterio.open(tif_path) as src:
-            # Leer el archivo shapefile
-            shapefile = gpd.read_file(shp_path)
 
-            # Obtener la geometría del shapefile (por ejemplo, la primera geometría)
-            geometry = shapefile.to_crs(src.crs).geometry[0]
+    #if recortar == True:
+    #    output_path = str(Root)+'Temporales/Basics/Recortado/'+str(nombre_Archivo)+'.tif'
+    #    tif_path = clp.clip_shp(tif_path, shp_path, output_path)
 
-            # Realizar el recorte
-            out_image, out_transform = mask(src, [geometry], crop=True)
 
-            # Calcular la transformación afín con el nuevo tamaño de celda
-            resx = tamanio_celda
-            resy = -tamanio_celda
-            new_transform = Affine(resx, out_transform.b, out_transform.c,
-                                out_transform.d, resy, out_transform.f)
-
-            # Ruta de salida para el nuevo archivo TIFF recortado con el nuevo tamaño de celda
-            output_path = str(Root)+'Temporales/Basics/'+str(nombre_Archivo)+'.tif'
-
-            # Actualizar los metadatos
-            out_meta = src.meta.copy()
-            out_meta.update({
-                "driver": "GTiff",
-                "height": out_image.shape[1],
-                "width": out_image.shape[2],
-                "transform": new_transform,
-                "crs": src.crs,
-                "dtype": out_image.dtype,
-                "nodata": out_image.nodata,
-                "compress": "lzw",
-                "photometric": "RGB",
-                "res": (resx, resy)
-            })
-
-           # Guardar el nuevo archivo TIFF recortado con el nuevo tamaño de celda
-            with rasterio.open(output_path, "w", **out_meta) as dest:
-                dest.write(out_image)
+    if escalar == True:
+        output_path = str(Root)+'Temporales/Basics/Escalado/'+str(nombre_Archivo)+'.tif'
+        tif_path = scl.reescalar(tif_path, output_path, cellsize)
 
 
     # Abrir el archivo GeoTIFF con rasterio
-    with rasterio.open(str(Root)+'Temporales/Basics/'+str(nombre_Archivo)+'.tif') as src:
-        # Leer los datos de la banda 1 como un array NumPy
-        data = src.read(1).astype('int32')
-        if(src._nodatavals[0] == None):
-            mascara = data == int(0)
-            data[mascara] = -9999
-        else:
-            mascara = data == int(src._nodatavals[0])
-            data[mascara] = -9999
-        # Obtener los metadatos de la imagen
-        profile = src.profile
-        
-        # Actualizar el tamaño de celda en el perfil
-        new_transform = rasterio.Affine(tamanio_celda, profile["transform"][1], profile["transform"][2],
-                                    profile["transform"][3], -tamanio_celda, profile["transform"][5])
-        profile["transform"] = new_transform
-
-        profile["nodata"] = -9999
-
-
-    with open(str(Root)+'Basics/'+str(nombre_Archivo)+'.asc', "w") as dst:
-        # Escribir los metadatos en el archivo ASCII
-        dst.write("ncols {}\n".format(profile["width"]))
-        dst.write("nrows {}\n".format(profile["height"]))
-        dst.write("xllcorner {}\n".format(profile["transform"][2]))
-        dst.write("yllcorner {}\n".format(profile["transform"][5] + (profile["height"] * profile["transform"][4])))
-        dst.write("cellsize {}\n".format(profile["transform"][0]))
-        dst.write("NODATA_value {}\n".format(profile["nodata"]))
-
-        # Escribir los datos en el archivo ASCII
-        for row in data:
-            dst.write(" ".join(str(x) if x != row[0] else str(x).lstrip() for x in row) + "\n")
-    
-    with rasterio.open(str(Root)+'Basics/'+str(nombre_Archivo)+'.asc', 'r+') as src:
-        # Crea un objeto CRS basado en el código EPSG
-        #print(src.crs)
-        srs = rasterio.crs.CRS.from_epsg(epsg_code)
-
-        # Establece el SRS en el objeto DatasetReader
-        src.crs = srs
-
-        #return src   
-        src.close()
+    write.escritura(tif_path,nombre_Archivo, Root,sistemaCoordenadas)
     print("proceso terminado")
 
 
@@ -219,16 +95,15 @@ def Basics_singleImage_Local(nombre_Cuenca, nombre_Archivo, cellsize, tif_path, 
 ##########################################################################################################################################################
 ##########################################################################################################################################################
 
-def Download_TimeSerie(nombre_Cuenca, nombre_Archivo, nombre_carpeta, satelite, scope, cellsize, shp_path, start_date, end_date, MoD, Root, sistemaCoordenadas):
+def Download_TimeSerie(nombre_Cuenca, nombre_Archivo, nombre_carpeta, satelite, Banda, cellsize, shp_path, start_date, end_date, MoD, Root, sistemaCoordenadas, recortar, escalar):
     AreaShp = gpd.read_file(str(shp_path))
     areaProyecto = ee.FeatureCollection(AreaShp.__geo_interface__).geometry()
-    tamanio_celda = cellsize 
     epsg_code = sistemaCoordenadas
     # Carga la colección de imágenes Landsat 8 Surface Reflectance
     collection = ee.ImageCollection(str(satelite)) \
         .filterBounds(areaProyecto) \
         .filterDate(start_date, end_date) \
-        .sort(str(scope))
+        .sort(str(Banda))
 
     # Imprime el número de imágenes en la colección
     #print('Número de imágenes en la colección:', collection.size().getInfo())
@@ -247,101 +122,33 @@ def Download_TimeSerie(nombre_Cuenca, nombre_Archivo, nombre_carpeta, satelite, 
             fechas.append(date)
         #print(date)
 
-
-
     # Crear un archivo ASCII a partir de los datos de la imagen
     for i in range(collection.size().getInfo()):
         #for i in range(10):
         #print(i)
         #print('collection size ' + str(collection.size().getInfo()))
         url = image.getDownloadUrl({
-            'bands': [str(scope)],
+            'bands': [str(Banda)],
             'region': areaProyecto,
             'crs': 'EPSG:' + str(epsg_code),
-            'crs_transform': [cellsize, 0, 0, 0, -cellsize, 0],
+            'scale':30,
             'format': 'GEO_TIFF',
         })
         #print(url)
         response = requests.get(url)
-        with open(str(Root)+'Temporales/'+str(nombre_carpeta)+'/'+str(nombre_Cuenca)+'.'+str(nombre_Archivo)+'.'+str(fechas[i])+'.tif', 'wb') as fd:
+        tif_path = str(Root)+'Temporales/'+str(nombre_carpeta)+'/Normal/'+str(nombre_Cuenca)+'.'+str(nombre_Archivo)+'.'+str(fechas[i])+'.tif'
+        with open(tif_path, 'wb') as fd:
             fd.write(response.content)
         #print(i)
-        def clip(): #EN CONST
-            # Leer el archivo TIFF
-            with rasterio.open(str(Root)+'Temporales/'+str(nombre_carpeta)+'/'+str(nombre_Cuenca)+'.'+str(nombre_Archivo)+'.'+str(fechas[i])+'.tif') as src:
-                # Leer el archivo shapefile
-                shapefile = gpd.read_file(shp_path)
+        if recortar == True:
+            output_path = str(Root)+'Temporales/'+str(nombre_carpeta)+'/Recortado/'+str(nombre_Cuenca)+'.'+str(nombre_Archivo)+'.'+str(fechas[i])+'.tif'
+            tif_path = clp.clip_shp(tif_path, shp_path, output_path)
 
-                # Obtener la geometría del shapefile (por ejemplo, la primera geometría)
-                geometry = shapefile.to_crs(src.crs).geometry[0]
 
-                # Realizar el recorte
-                out_image, out_transform = mask(src, [geometry], crop=True)
-
-                # Calcular la transformación afín con el nuevo tamaño de celda
-                resx = tamanio_celda
-                resy = -tamanio_celda
-                new_transform = Affine(resx, out_transform.b, out_transform.c,
-                                    out_transform.d, resy, out_transform.f)
-
-                # Ruta de salida para el nuevo archivo TIFF recortado con el nuevo tamaño de celda
-                output_path = str(Root)+'Temporales/'+str(nombre_carpeta)+'/'+str(nombre_Cuenca)+'.'+str(nombre_Archivo)+'.'+str(fechas[i])+'.tif'
-
-                # Actualizar los metadatos
-                out_meta = src.meta.copy()
-                out_meta.update({
-                    "driver": "GTiff",
-                    "height": out_image.shape[1],
-                    "width": out_image.shape[2],
-                    "transform": new_transform
-                })
-            
-                # Guardar el nuevo archivo TIFF recortado con el nuevo tamaño de celda
-                with rasterio.open(output_path, "w", **out_meta) as dest:
-                    dest.write(out_image)
-
-        #print(i)
-        # Abrir el archivo GeoTIFF con rasterio
-        with rasterio.open(str(Root)+'Temporales/'+str(nombre_carpeta)+'/'+str(nombre_Cuenca)+'.'+str(nombre_Archivo)+'.'+str(fechas[i])+'.tif') as src:
-            # Leer los datos de la banda 1 como un array NumPy
-            data = src.read(1).astype('int32')
-            if(src._nodatavals[0] == None):
-                mascara = data == int(0)
-                data[mascara] = -9999
-            else:
-                mascara = data == int(src._nodatavals[0])
-                data[mascara] = -9999
-            # Obtener los metadatos de la imagen
-            profile = src.profile
-            
-            # Actualizar el tamaño de celda en el perfil
-            new_transform = rasterio.Affine(tamanio_celda, profile["transform"][1], profile["transform"][2],
-                                        profile["transform"][3], -tamanio_celda, profile["transform"][5])
-            profile["transform"] = new_transform
-
-            profile["nodata"] = -9999
-        #print(i)
-        with open(str(Root)+str(nombre_carpeta)+'/'+str(nombre_Cuenca)+'.'+str(nombre_Archivo)+'.'+str(fechas[i])+'.asc', "w") as dst:
-            # Escribir los metadatos en el archivo ASCII
-            dst.write("ncols {}\n".format(profile["width"]))
-            dst.write("nrows {}\n".format(profile["height"]))
-            dst.write("xllcorner {}\n".format(profile["transform"][2]))
-            dst.write("yllcorner {}\n".format(profile["transform"][5]+ (profile["height"] * profile["transform"][4])))
-            dst.write("cellsize {}\n".format(profile["transform"][0]))
-            dst.write("NODATA_value {}\n".format(profile["nodata"]))
-            # Escribir los datos en el archivo ASCII
-            for row in data:
-                dst.write(" ".join(str(x) if x != row[0] else str(x).lstrip() for x in row) + "\n")
-            print(i)
-
-    # Crear un archivo ASCII a partir de los datos de la imagen
-    for i in range(collection.size().getInfo()):
-        with rasterio.open(str(Root)+str(nombre_carpeta)+'/'+str(nombre_Cuenca)+'.'+str(nombre_Archivo)+'.'+str(fechas[i])+'.asc', 'r+') as src:
-            # Crea un objeto CRS basado en el código EPSG
-            #print(src.crs)
-            srs = rasterio.crs.CRS.from_epsg(epsg_code)
-
-            # Establece el SRS en el objeto DatasetReader
-            src.crs = srs  
-            src.close()
+        if escalar == True:
+            output_path = str(Root)+'Temporales/'+str(nombre_carpeta)+'/Escalado/'+str(nombre_Cuenca)+'.'+str(nombre_Archivo)+'.'+str(fechas[i])+'.tif'
+            tif_path = scl.reescalar(tif_path, output_path, cellsize)
+        output_path = str(Root)+str(nombre_carpeta)+'/'+str(nombre_Cuenca)+'.'+str(nombre_Archivo)+'.'+str(fechas[i])+'.asc'
+        # Guardar el nuevo archivo TIFF recortado con el nuevo tamaño de celda
+        write.escritura_SerieTiempo(tif_path, output_path, sistemaCoordenadas)
     print("proceso terminado")
