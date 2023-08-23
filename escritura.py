@@ -86,3 +86,36 @@ def escritura_SerieTiempo(tif_path, output_path, sistemaCoordenadas):
 
         #return src    
         src.close()
+
+
+
+def escrituraDEM(tif_path, nombre_Archivo, Root, ):
+    # Abrir el archivo GeoTIFF con rasterio
+    with rasterio.open(tif_path) as src:      
+        # Leer los datos de la banda 1 como un array NumPy
+        data = src.read(1).astype('int32')
+        if(src._nodatavals[0] == None):
+            mascara = data == int(0)
+            data[mascara] = -9999
+        else:
+            mascara = data == int(src._nodatavals[0])
+            data[mascara] = -9999
+
+        # Obtener los metadatos de la imagen
+        profile = src.profile
+        profile["nodata"] = -9999
+        
+
+    with open(str(Root)+'Basics/'+str(nombre_Archivo)+'.asc', "w") as dst:
+        # Escribir los metadatos en el archivo ASCII
+        dst.write("ncols {}\n".format(profile["width"]))
+        dst.write("nrows {}\n".format(profile["height"]))
+        dst.write("xllcorner {}\n".format(profile["transform"][2]))
+        dst.write("yllcorner {}\n".format(profile["transform"][5]+ (profile["height"] * profile["transform"][4])))
+        dst.write("cellsize {}\n".format(profile["transform"][0]))
+        dst.write("NODATA_value {}\n".format(profile["nodata"]))
+
+        # Escribir los datos en el archivo ASCII
+        for row in data:
+            dst.write(" ".join(str(x) if x != row[0] else "=" + str(x).lstrip() for x in row) + "\n")
+

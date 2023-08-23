@@ -8,3 +8,8 @@ En proximas funcionalidades deben poder crearse archivos para la calibracion del
 2. el tamaño de la celda 
 3. el caso de analisis (simulacion o calibracion //demas casos de analisis a trabajar en el futuro)
 4. en caso de querer correr una simulacion los parametros necesarios estandarizados en un txt, la idea es poder estandarizar todo con un mascara de calibracion.
+
+
+#Actualizacion 23/08/2023
+
+El modelo funciona parcialmente, no genera datos nuevos de escorrentia pero puede ser producto de alguna incompatibilidad de alguna entrada de la carpeta Basics, pero en general te genera un modelo Completo, funcionalidades automatizadas de la creacion de archivos .Project y calibraciones en documento anaconda Probando Ando, tambien se agrega entorno de desarrollo en anaconda con earth engine funcionando en windows 10 y 11. Futuramente queremos generar un entorno que integre Arcpy con Earth Engine y Geopandas. Pronto actualizacion con modelo completamente funcional

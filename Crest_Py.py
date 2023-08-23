@@ -17,7 +17,7 @@ import locale
 import sys
 import os
 current_path = os.path.abspath(os.path.dirname(__file__))
-sys.path.append(current_path)
+sys.path.append("/Basics_Rain_PET")
 import clipear as clp
 import escritura as write
 import Reescalar as scl
@@ -25,14 +25,35 @@ import Extensionlocal as ExtLocal
 import crear    
 ee.Initialize()
 
+Valores_Base = {
+    'DEM': {'Nombre': 'DEM','Satelite': 'WWF/HydroSHEDS/03VFDEM', 'Banda': 'b1'},
+    'FDR': {'Nombre': 'FDR','Satelite': 'WWF/HydroSHEDS/03DIR', 'Banda': 'b1'},
+    'FAC': {'Nombre': 'FAC','Satelite': 'WWF/HydroSHEDS/15ACC', 'Banda': 'b1'},
+    'PET': {'Nombre': 'pet','nombre_Cuenca': '', 'nombre_Carpeta': 'PET', 'Satelite': 'ECMWF/ERA5_LAND/MONTHLY_AGGR', 'Banda': 'potential_evaporation_sum'},
+    'Rain': {'Nombre': 'rain','nombre_Cuenca': '', 'nombre_Carpeta': 'Rain', 'Satelite': 'TRMM/3B43V7', 'Banda': 'precipitation'}
+}
+
+def nombreCuenca(nombre):
+    Valores_Base['PET']['nombre_Cuenca'] = nombre
+    Valores_Base['Rain']['nombre_Cuenca'] = nombre
+    
+
 
 def Iniciar(Root):
+    Folder_Base = Root
     crear.crearDirectoriosCrest(Root)
 
 # In[5]:
 ##########################################################################################################################################################
 ##########################################################################################################################################################
-def Basics_singleImage(nombre_Archivo, shp_path, satelite, banda, Root, sistemaCoordenadas, cellsize, recortar, escalar):
+def Basics_singleImage(nombre_Archivo, shp_path, Root, satelite = None, banda = None, sistemaCoordenadas = 4326, cellsize = 0.0008, recortar = False, escalar = False):
+    
+    if satelite == None:
+        satelite = Valores_Base[nombre_Archivo]['Satelite']
+    
+    if banda == None:
+        banda = Valores_Base[nombre_Archivo]['Banda']
+    
     AreaShp = gpd.read_file(str(shp_path))
     areaProyecto = ee.FeatureCollection(AreaShp.__geo_interface__).geometry()
     imagen = ee.Image(str(satelite)).clip(areaProyecto)
@@ -63,39 +84,42 @@ def Basics_singleImage(nombre_Archivo, shp_path, satelite, banda, Root, sistemaC
     write.escritura(tif_path,nombre_Archivo, Root,sistemaCoordenadas)
     print("Proceso terminado")
 
-
 # In[6]:
 
-
 ##########################################################################################################################################################
 ##########################################################################################################################################################
 
-
-def Basics_singleImage_Local(nombre_Archivo, tif_path, shp_path, Root, sistemaCoordenadas, cellsize, recortar, escalar):
+def Basics_singleImage_Local(nombre_Archivo, tif_path, shp_path, Root, sistemaCoordenadas = 4326, cellsize= 0.0008, recortar = False, escalar = False):
     output_path = str(Root)+'Temporales/Basics/Normal/'+str(nombre_Archivo)+'.tif'
-    ExtLocal.extension(tif_path, shp_path, output_path)
-
-
-    #if recortar == True:
-    #    output_path = str(Root)+'Temporales/Basics/Recortado/'+str(nombre_Archivo)+'.tif'
-    #    tif_path = clp.clip_shp(tif_path, shp_path, output_path)
-
-
+    tif_path = ExtLocal.extension(tif_path, shp_path, output_path)
+    if recortar == True:
+        output_path = str(Root)+'Temporales/Basics/Recortado/'+str(nombre_Archivo)+'.tif'
+        tif_path = clp.clip_shp(tif_path, shp_path, output_path)
     if escalar == True:
         output_path = str(Root)+'Temporales/Basics/Escalado/'+str(nombre_Archivo)+'.tif'
         tif_path = scl.reescalar(tif_path, output_path, cellsize)
-
-
+        print(tif_path)
     # Abrir el archivo GeoTIFF con rasterio
     write.escritura(tif_path,nombre_Archivo, Root,sistemaCoordenadas)
     print("proceso terminado")
 
-
-
 ##########################################################################################################################################################
 ##########################################################################################################################################################
 
-def Download_TimeSerie(nombre_Cuenca, nombre_Archivo, nombre_carpeta, satelite, Banda, cellsize, shp_path, start_date, end_date, MoD, Root, sistemaCoordenadas, recortar, escalar):
+def Download_TimeSerie(nombre_carpeta, Root, shp_path, start_date, end_date, nombre_Cuenca = None, nombre_Archivo = None, satelite = None, Banda = None, cellsize = 0.0008,  MoD = 'm',  sistemaCoordenadas = 4326, recortar = False, escalar = True):
+    
+    if nombre_Cuenca == None:
+        nombre_Cuenca = Valores_Base[nombre_carpeta]['nombre_Cuenca']
+    
+    if nombre_Archivo == None: 
+        nombre_Archivo = Valores_Base[nombre_carpeta]['Nombre']
+    
+    if satelite == None:
+        satelite = Valores_Base[nombre_carpeta]['Satelite']
+    
+    if Banda == None:
+        Banda = Valores_Base[nombre_carpeta]['Banda']
+    
     AreaShp = gpd.read_file(str(shp_path))
     areaProyecto = ee.FeatureCollection(AreaShp.__geo_interface__).geometry()
     epsg_code = sistemaCoordenadas
@@ -116,7 +140,7 @@ def Download_TimeSerie(nombre_Cuenca, nombre_Archivo, nombre_carpeta, satelite, 
         # Obtiene la fecha de la imagen actual
         if (MoD == "m"):
             date = ee.Date(image.get('system:time_start')).format('YYYYMM').getInfo()
-            fechas.append(date+'01')
+            fechas.append(date)
         else:
             date = ee.Date(image.get('system:time_start')).format('YYYYMMDD').getInfo()
             fechas.append(date)
